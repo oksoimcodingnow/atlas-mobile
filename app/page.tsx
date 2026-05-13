@@ -53,12 +53,13 @@ type ChatItem =
   | { type: "tool_result"; is_error: boolean; summary: string }
   | { type: "error"; text: string };
 
-// The four models that appear in the slicer at the bottom of the screen.
+// The models that appear in the slicer at the bottom of the screen.
+// "Gemini" is free up to 1500 requests/day; the Claude models are pay-per-token.
 const MODELS = [
-  { id: "claude-opus-4-7", label: "OPUS 4.7", cost: "$5/$25" },
-  { id: "claude-opus-4-6", label: "OPUS 4.6", cost: "$5/$25" },
-  { id: "claude-sonnet-4-6", label: "SONNET", cost: "$3/$15" },
+  { id: "gemini-2.5-flash", label: "GEMINI", cost: "FREE" },
   { id: "claude-haiku-4-5", label: "HAIKU", cost: "$1/$5" },
+  { id: "claude-sonnet-4-6", label: "SONNET", cost: "$3/$15" },
+  { id: "claude-opus-4-7", label: "OPUS", cost: "$5/$25" },
 ];
 
 // ============================================================================
@@ -74,7 +75,7 @@ export default function ChatPage() {
   const [history, setHistory] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [repo, setRepo] = useState("");
-  const [model, setModel] = useState("claude-opus-4-7");
+  const [model, setModel] = useState("gemini-2.5-flash");
   const [busy, setBusy] = useState(false);
 
   // --- REFS ---
@@ -87,7 +88,7 @@ export default function ChatPage() {
   // The `[]` empty dependency array means: run ONCE when component mounts.
   useEffect(() => {
     const savedRepo = localStorage.getItem("atlas.repo") || "";
-    const savedModel = localStorage.getItem("atlas.model") || "claude-opus-4-7";
+    const savedModel = localStorage.getItem("atlas.model") || "gemini-2.5-flash";
     setRepo(savedRepo);
     setModel(savedModel);
   }, []);
