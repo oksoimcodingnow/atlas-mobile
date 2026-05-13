@@ -78,6 +78,7 @@ npm run dev                  # → http://localhost:3000
 
 ## Conventions
 
+- **Handshake for risky work**: use `.handshake/` before non-trivial changes, especially GitHub write/commit behavior, push notifications, cron, KV, auth, secrets, or multi-file refactors.
 - **Educational comments**: `app/page.tsx` is heavily commented as a React/Next.js tutorial. Maintain that style — every new concept gets a short inline explainer aimed at a complete beginner. Don't strip these comments for "cleanliness."
 - **Provider parity**: Any new tool in `lib/tools.ts` must be supported by BOTH `lib/providers/anthropic.ts` AND `lib/providers/gemini.ts`. Test both before shipping.
 - **Models**: Default is `gemini-2.5-flash` (free). Slicer order is cheapest → most expensive: GEMINI / HAIKU / SONNET / OPUS.

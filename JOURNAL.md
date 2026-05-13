@@ -26,6 +26,7 @@ Use case: I'm on the bus, I text ATLAS "*add a logout button to roshop's nav*". 
 | `lib/providers/anthropic.ts` | Talks to Claude API with tool use + streaming |
 | `lib/providers/gemini.ts` | Talks to Google Gemini Flash (free tier) with tool use + streaming |
 | `lib/tools.ts` | Shared GitHub tool definitions (`list_repo_files`, `read_repo_file`, `write_repo_file`) |
+| `.handshake/` | AI review workflow: Codex packet -> Claude/ChatGPT review -> Codex response -> final decision |
 | `public/manifest.webmanifest` | Tells phones "this is an installable app" |
 | `.env.example` | Template showing which secrets you need (never commit real keys) |
 
@@ -79,6 +80,22 @@ Use case: I'm on the bus, I text ATLAS "*add a logout button to roshop's nav*". 
 | Lucide React | Clean SVG icons (Send, Trash, Wrench, etc.) |
 | Vercel | Hosting — serverless functions + static frontend, free Hobby tier |
 | GitHub | Version control, where my repos live |
+
+---
+
+## AI Handshake Protocol
+
+For risky changes, use the `.handshake/` folder before committing.
+
+The workflow:
+
+1. Codex writes `.handshake/01_codex_packet.md`
+2. Paste that packet into Claude Pro or ChatGPT Plus
+3. Paste the review into `.handshake/02_external_review.md`
+4. Codex responds/fixes in `.handshake/03_codex_response.md`
+5. Final status goes in `.handshake/04_decision.md`
+
+Use this for GitHub-writing tools, reminders, cron, secrets, deployment, and multi-file refactors.
 
 ---
 
