@@ -10,6 +10,7 @@
  *   - `summary`: a one-line human-readable description for the UI
  */
 import { Octokit } from "@octokit/rest";
+import { addReminder } from "./storage";
 
 export interface ToolInput {
   repo?: string;
@@ -18,6 +19,14 @@ export interface ToolInput {
   branch?: string;
   content?: string;
   commit_message?: string;
+  // schedule_reminder
+  fire_at?: string;    // ISO 8601 datetime
+  message?: string;
+}
+
+export interface ToolContext {
+  octokit: Octokit;
+  defaultUser: string;
 }
 
 export interface ToolResult {
@@ -87,6 +96,26 @@ export const TOOL_SCHEMAS = [
       required: ["repo", "path", "content", "commit_message"],
     },
   },
+  {
+    name: "schedule_reminder",
+    description:
+      "Schedule a future push notification on the user's phone. Use this when the user says things like 'remind me at 7pm to study' or 'tell me in 2 hours to take a break'. The reminder fires as a push notification on the user's installed PWA.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        fire_at: {
+          type: "string" as const,
+          description:
+            "ISO 8601 datetime when the reminder should fire. Use the user's local timezone if known, otherwise UTC. Example: '2026-05-13T19:00:00+07:00'.",
+        },
+        message: {
+          type: "string" as const,
+          description: "Short notification body (under 100 chars). Becomes the push body.",
+        },
+      },
+      required: ["fire_at", "message"],
+    },
+  },
 ];
 
 function normalizeRepo(
@@ -104,9 +133,34 @@ function normalizeRepo(
 export async function runTool(
   toolName: string,
   input: ToolInput,
-  octokit: Octokit,
-  defaultUser: string,
+  ctx: ToolContext,
 ): Promise<ToolResult> {
+  const { octokit, defaultUser } = ctx;
+
+  // schedule_reminder doesn't need a repo target.
+  if (toolName === "schedule_reminder") {
+    const when = input.fire_at ? Date.parse(input.fire_at) : NaN;
+    if (!when || isNaN(when)) {
+      throw new Error("schedule_reminder: invalid fire_at ISO datetime");
+    }
+    if (when < Date.now() - 60_000) {
+      throw new Error("schedule_reminder: fire_at is in the past");
+    }
+    const message = (input.message || "Reminder").slice(0, 200);
+    const id = "rem_" + Math.random().toString(36).slice(2, 12);
+    await addReminder({
+      id,
+      fireAt: when,
+      message,
+      createdAt: Date.now(),
+    });
+    return {
+      content: JSON.stringify({ id, fireAt: when, message }),
+      summary: `scheduled "${message.slice(0, 40)}" for ${new Date(when).toLocaleString()}`,
+    };
+  }
+
+  // GitHub-touching tools below all need a repo target.
   const target = normalizeRepo(input.repo, defaultUser);
   if (!target) throw new Error("Missing repo");
   const { owner, repo } = target;

@@ -156,6 +156,17 @@ The translation lives in `lib/providers/anthropic.ts` and `lib/providers/gemini.
 - Slicer now offers GEMINI / HAIKU / SONNET / OPUS pills
 - **Defaulted to free Gemini** so I can chat without spending anything
 
+### v0.0.4 — Push notifications + scheduled reminders (the "Jarvis on my phone" upgrade)
+- Service worker at `public/sw.js` — receives Web Push events, shows notifications, deep-links on tap
+- VAPID-signed push via `web-push` library (`lib/push.ts`)
+- `ENABLE` button in header — requests permission, subscribes via PushManager, sends a test push
+- Subscription saved server-side to Vercel KV (Upstash Redis) so cron can fire pushes when ATLAS isn't open
+- New AI tool: `schedule_reminder({fire_at, message})` — ATLAS can now schedule pushes from chat
+- `/api/cron/tick` endpoint pulls due reminders + sends pushes
+- GitHub Action (`.github/workflows/cron-tick.yml`) hits the endpoint every minute — free on public repos
+- Refactored `runTool` to accept a `ToolContext` so new tools can plug in without breaking the providers
+- `SETUP_PUSH.md` walks through end-user wiring (Vercel KV, env vars, GitHub Action secrets, phone install)
+
 ---
 
 ## Deploying Updates
@@ -205,9 +216,11 @@ After install, ATLAS opens full-screen, no browser bars — feels like a native 
 - [x] Next.js v2 rewrite with educational comments
 - [x] Multi-provider (Claude + free Gemini)
 - [x] Mobile-friendly PWA install
-- [ ] Google Calendar OAuth + Web Push notifications for work/study schedule
+- [x] **Web Push + scheduled reminders** (chat "remind me at 7pm" → phone vibrates)
+- [ ] Google Calendar OAuth — auto-fetch upcoming events and schedule reminders
+- [ ] AI "cheap reviewer" pass — Haiku/Gemini reviews Claude's commits, opens issues if problems found
 - [ ] Voice input (Web Speech API) + TTS output
-- [ ] Persistent chat history (Vercel KV or Firestore)
+- [ ] Persistent chat history (in the same KV)
 - [ ] Pull-request creation instead of direct commits
 - [ ] Code diff preview before commit
 - [ ] Add OpenAI GPT models to the slicer (when I have an OpenAI API key)

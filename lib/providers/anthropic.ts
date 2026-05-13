@@ -103,8 +103,7 @@ export async function runAnthropic(opts: RunOptions): Promise<void> {
         const result = await runTool(
           tu.name,
           tu.input as ToolInput,
-          octokit,
-          defaultUser,
+          { octokit, defaultUser },
         );
         write(
           sseChunk({

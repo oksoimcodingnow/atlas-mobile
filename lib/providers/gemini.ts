@@ -159,8 +159,7 @@ export async function runGemini(opts: RunOptions): Promise<void> {
         const result = await runTool(
           call.name,
           call.args as ToolInput,
-          octokit,
-          defaultUser,
+          { octokit, defaultUser },
         );
         write(
           sseChunk({

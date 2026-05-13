@@ -184,6 +184,19 @@ export default function ChatPage() {
       }
       setPushState("subscribed");
 
+      // Save the subscription server-side so the cron tick can fire pushes
+      // to this device when the app isn't open. Best-effort — if KV isn't
+      // configured yet, we silently skip (the test push below still works).
+      try {
+        await fetch("/api/push/save-subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: sub.toJSON() }),
+        });
+      } catch {
+        /* non-fatal — server-side reminders just won't work yet */
+      }
+
       // Send a test push immediately so the user sees it works.
       const res = await fetch("/api/push/test", {
         method: "POST",

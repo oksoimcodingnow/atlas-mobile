@@ -1,0 +1,33 @@
+# GitHub Action: ping ATLAS's /api/cron/tick every minute.
+#
+# Public repos get unlimited free Actions minutes — so running every minute
+# (1440 runs/day) is fine on the free tier.
+#
+# REQUIRED GITHUB REPO SECRETS (Settings -> Secrets and variables -> Actions):
+#   ATLAS_URL   — e.g. https://atlas-mobile-theta.vercel.app
+#   CRON_SECRET — the same string as your Vercel env var of the same name
+name: ATLAS Reminders Tick
+
+on:
+  schedule:
+    - cron: "* * * * *" # every minute
+  workflow_dispatch:    # also lets you trigger manually
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping /api/cron/tick
+        run: |
+          set -e
+          if [ -z "${{ secrets.ATLAS_URL }}" ]; then
+            echo "Missing ATLAS_URL secret"; exit 1
+          fi
+          if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "Missing CRON_SECRET secret"; exit 1
+          fi
+          curl --fail --silent --show-error \
+            -X POST "${{ secrets.ATLAS_URL }}/api/cron/tick" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"

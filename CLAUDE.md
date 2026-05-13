@@ -55,8 +55,16 @@ Both providers stream the SAME SSE event shape so the frontend (`app/page.tsx`) 
 | `ANTHROPIC_API_KEY` | using `claude-*` models | https://console.anthropic.com (paid) |
 | `GITHUB_TOKEN` | always | https://github.com/settings/tokens/new — `repo` scope |
 | `GITHUB_USER` | always | username (e.g. `oksoimcodingnow`) |
+| `VAPID_PUBLIC_KEY` | push notifications | generated once via `npx web-push generate-vapid-keys` |
+| `VAPID_PRIVATE_KEY` | push notifications | same — keep server-side only |
+| `VAPID_SUBJECT` | push notifications | `mailto:you@example.com` |
+| `KV_REST_API_URL` | reminders (scheduled push) | auto-injected when Vercel KV is connected |
+| `KV_REST_API_TOKEN` | reminders | auto-injected when Vercel KV is connected |
+| `CRON_SECRET` | reminders | random hex string; same value as the GitHub `CRON_SECRET` repo secret |
 
 Local dev: `.env.local` (gitignored). Production: Vercel dashboard env vars.
+
+See `SETUP_PUSH.md` for the end-user wiring guide.
 
 ## Run locally
 
@@ -76,14 +84,18 @@ npm run dev                  # → http://localhost:3000
 - **No frameworks bloat**: Pure Next.js + Tailwind. Don't pull in shadcn/ui or other component libraries without asking — user prefers minimal dependencies.
 - **Agentic loop cap**: 10 iterations max per turn (safety against runaway loops).
 - **Streaming**: Always stream responses. Never block on full completion.
+- **Tool context**: `runTool` now takes a `ToolContext = { octokit, defaultUser }`. New tools can extend this — don't go back to positional args.
 
 ## Roadmap (in priority order)
 
-1. **Google Calendar OAuth + Web Push** for work/study schedule notifications (user wants this badly — see `atlas_project.md` in user's memory)
+1. **Google Calendar OAuth** — fetch real calendar events, auto-schedule reminders for upcoming events
 2. Voice input (Web Speech API) + TTS output
-3. Persistent chat history (Vercel KV or Firestore)
-4. Pull-request creation flow instead of direct commits
-5. Code diff preview before commit
+3. AI "cheap reviewer" pass — after Claude commits, fire a Haiku/Gemini call to review the diff and post a follow-up issue if it finds problems
+4. Persistent chat history (in the same KV)
+5. Pull-request creation flow instead of direct commits
+6. Code diff preview before commit
+
+**Shipped (Phase 1 + 2):** Web Push, VAPID, service worker, scheduled `schedule_reminder` tool, Vercel KV storage, GitHub Actions cron tick every minute.
 
 ## Things to avoid
 
