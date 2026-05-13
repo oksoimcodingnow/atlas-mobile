@@ -30,8 +30,25 @@
  * The whole React mental model is: state changes -> UI re-renders.
  */
 
-import { useState, useRef, useEffect } from "react";
-import { Send, Trash2, Wrench, CheckCircle2, XCircle } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Trash2, Wrench, CheckCircle2, XCircle, Bell, BellOff } from "lucide-react";
+
+// ============================================================================
+// PUSH NOTIFICATION HELPERS
+// ============================================================================
+// `urlBase64ToUint8Array` converts the VAPID public key (base64url string)
+// into a Uint8Array, which is the format the browser's PushManager API
+// expects. Pulled from the WebPush spec — boilerplate every PWA needs.
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+type PushState = "unsupported" | "denied" | "default" | "subscribed";
 
 // ============================================================================
 // TYPES — TypeScript definitions. They don't affect runtime, just help the
@@ -78,6 +95,12 @@ export default function ChatPage() {
   const [model, setModel] = useState("gemini-2.5-flash");
   const [busy, setBusy] = useState(false);
 
+  // Push notification state. Drives the "Enable Notifications" / "Send Test"
+  // button in the header. We initialize to "default" optimistically — useEffect
+  // below will detect the real state once mounted.
+  const [pushState, setPushState] = useState<PushState>("default");
+  const [pushBusy, setPushBusy] = useState(false);
+
   // --- REFS ---
   // useRef gives us a stable reference to a DOM element. Used here to
   // auto-scroll the chat area when new messages arrive.
@@ -97,6 +120,129 @@ export default function ChatPage() {
   // The `[repo]` dependency array means: re-run when `repo` changes.
   useEffect(() => { localStorage.setItem("atlas.repo", repo); }, [repo]);
   useEffect(() => { localStorage.setItem("atlas.model", model); }, [model]);
+
+  // --- PUSH NOTIFICATIONS ---
+  // On mount: register the service worker and figure out the current push state.
+  // We need this to know whether to show "Enable Push" or "Test Push" in the header.
+  useEffect(() => {
+    let cancelled = false;
+    async function detectPushState() {
+      if (typeof window === "undefined") return;
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setPushState("unsupported");
+        return;
+      }
+      try {
+        // Register the SW (idempotent — calling twice is fine, browser dedupes).
+        const reg = await navigator.serviceWorker.register("/sw.js");
+        const perm = Notification.permission;
+        if (perm === "denied") {
+          if (!cancelled) setPushState("denied");
+          return;
+        }
+        const existing = await reg.pushManager.getSubscription();
+        if (!cancelled) setPushState(existing ? "subscribed" : "default");
+      } catch {
+        if (!cancelled) setPushState("unsupported");
+      }
+    }
+    detectPushState();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Subscribe-then-fire-test flow.
+  // 1. Fetch the public VAPID key from /api/push/public-key
+  // 2. Ask the browser for notification permission
+  // 3. PushManager.subscribe(...) — returns a subscription object
+  // 4. POST it to /api/push/test → server fires a push back
+  const enablePush = useCallback(async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        throw new Error("Push notifications not supported on this device/browser");
+      }
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        setPushState(perm === "denied" ? "denied" : "default");
+        throw new Error("Notification permission " + perm);
+      }
+
+      const keyRes = await fetch("/api/push/public-key");
+      const keyData = await keyRes.json();
+      if (!keyData.ok || !keyData.publicKey) {
+        throw new Error("Server missing VAPID public key");
+      }
+
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(keyData.publicKey) as BufferSource,
+        });
+      }
+      setPushState("subscribed");
+
+      // Send a test push immediately so the user sees it works.
+      const res = await fetch("/api/push/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: sub.toJSON(),
+          payload: {
+            title: "ATLAS",
+            body: "Push notifications enabled. You'll get reminders here.",
+            tag: "atlas-enable",
+          },
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error("Test push failed: " + errBody);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      pushItem({ type: "error", text: "Push: " + msg });
+    } finally {
+      setPushBusy(false);
+    }
+  }, [pushBusy]);
+
+  // Send a test push to the already-subscribed device.
+  const sendTestPush = useCallback(async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        setPushState("default");
+        throw new Error("Not subscribed");
+      }
+      const res = await fetch("/api/push/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: sub.toJSON(),
+          payload: {
+            title: "ATLAS",
+            body: "Test push at " + new Date().toLocaleTimeString(),
+            tag: "atlas-test",
+          },
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error("Test push failed: " + errBody);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      pushItem({ type: "error", text: "Push: " + msg });
+    } finally {
+      setPushBusy(false);
+    }
+  }, [pushBusy]);
 
   // Auto-scroll to the bottom of the chat whenever items change.
   useEffect(() => {
@@ -258,11 +404,37 @@ export default function ChatPage() {
         <div className="text-base tracking-[0.35em] text-cyan [text-shadow:0_0_12px_rgba(0,229,255,0.5)]">
           A · T · L · A · S
         </div>
-        <div className="flex items-center gap-3 text-[0.65rem] tracking-widest text-cyan-dim">
+        <div className="flex items-center gap-2 text-[0.65rem] tracking-widest text-cyan-dim">
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-2 h-2 bg-cyan rounded-full atlas-pulse [box-shadow:0_0_8px_var(--color-cyan)]" />
             ONLINE
           </span>
+          {pushState === "subscribed" ? (
+            <button
+              onClick={sendTestPush}
+              disabled={pushBusy}
+              className="flex items-center gap-1 px-2 py-1 border border-ok/40 text-ok hover:bg-ok/10 transition disabled:opacity-40"
+              aria-label="Send test notification"
+            >
+              <Bell size={11} />
+              TEST
+            </button>
+          ) : pushState === "default" ? (
+            <button
+              onClick={enablePush}
+              disabled={pushBusy}
+              className="flex items-center gap-1 px-2 py-1 border border-cyan/30 hover:border-cyan hover:text-cyan transition disabled:opacity-40"
+              aria-label="Enable notifications"
+            >
+              <Bell size={11} />
+              ENABLE
+            </button>
+          ) : pushState === "denied" ? (
+            <span className="flex items-center gap-1 px-2 py-1 border border-err/40 text-err" title="Notification permission denied in browser settings">
+              <BellOff size={11} />
+              BLOCKED
+            </span>
+          ) : null}
           {items.length > 0 && (
             <button
               onClick={clear}
