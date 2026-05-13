@@ -1,0 +1,78 @@
+/*
+  GLOBAL STYLES + TAILWIND v4
+  ===========================
+  Tailwind v4 reads its config from CSS, not tailwind.config.js.
+  The @theme block below defines custom design tokens that Tailwind
+  exposes as utility classes — e.g. `--color-cyan` becomes `bg-cyan`,
+  `text-cyan`, `border-cyan`, etc.
+*/
+@import "tailwindcss";
+
+@theme {
+  --color-cyan: #00e5ff;
+  --color-cyan-dim: #007a8a;
+  --color-bg: #04070d;
+  --color-bg-2: #0a1320;
+  --color-text: #d6f6ff;
+  --color-warn: #ff9d3d;
+  --color-ok: #6cffb1;
+  --color-err: #ff7a7a;
+  --font-mono: "Segoe UI", "Consolas", -apple-system, BlinkMacSystemFont, monospace;
+}
+
+/* Safe-area variables for iPhone notch / home indicator */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: radial-gradient(ellipse at center, var(--color-bg-2) 0%, var(--color-bg) 70%);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The grid background — gives it that Jarvis HUD feel */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 229, 255, 0.03) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, rgba(0, 229, 255, 0.03) 0 1px, transparent 1px 4px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Subtle pulse for the ONLINE dot */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.7); }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.atlas-pulse { animation: pulse 1.6s infinite ease-in-out; }
+.atlas-spin-slow { animation: spin 18s linear infinite; }
+.atlas-spin-fast { animation: spin 3s linear infinite reverse; }
+.atlas-blink { animation: blink 1.2s steps(2) infinite; }
+
+/* Hide ugly scrollbars but keep scroll behavior */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--color-cyan-dim); }
+::-webkit-scrollbar-track { background: transparent; }

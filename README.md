@@ -1,146 +1,89 @@
-# ATLAS Mobile
+# ATLAS Mobile (v2 — Next.js)
 
-A mobile AI coding agent. Open it on your phone, message it like a friend, watch it read and commit code in your GitHub repos.
+> AI coding agent in your phone's home screen. Message it, watch it read + commit code to your GitHub repos.
 
-> Companion to [atlas-dashboard](https://github.com/oksoimcodingnow/atlas-dashboard) — the same Jarvis-y aesthetic, but living in your phone's home screen.
+**Live:** https://atlas-mobile-theta.vercel.app
 
-## What it does
+This is the **v2 rewrite** in Next.js 15 + TypeScript + Tailwind v4. The original vanilla JS version still lives in git history — checkout commit `bcf3cca` to see it.
 
-You text ATLAS something like:
+## 🎓 Built as a learning project
 
-> *"add a logout button to the top-right nav in roshop"*
+I'm new to React. This codebase has rich comments throughout explaining concepts as they come up. Start in this order:
 
-ATLAS uses Claude to:
-1. Pick the right tool (`list_repo_files` to find the file, `read_repo_file` to see current code)
-2. Decide the change
-3. Call `write_repo_file` — which commits + pushes to your GitHub repo
-
-You arrive at your desk, `git pull`, and there's a commit waiting.
+1. [`app/layout.tsx`](./app/layout.tsx) — root layout, PWA metadata, viewport config
+2. [`app/page.tsx`](./app/page.tsx) — the main chat UI (heavily commented React tutorial)
+3. [`app/api/chat/route.ts`](./app/api/chat/route.ts) — the Next.js Route Handler backend
+4. [`app/globals.css`](./app/globals.css) — Tailwind v4 design tokens
 
 ## Stack
 
 | Layer | Tech | Why |
 |---|---|---|
-| Frontend | Vanilla HTML/CSS/JS PWA | No framework, installable to home screen |
-| Backend | Vercel serverless function (Node.js) | Free Hobby tier, no credit card |
-| AI | Anthropic Claude API + tool use | Opus 4.7 / Sonnet 4.6 / Haiku 4.5 swappable |
-| Git ops | GitHub REST API via Octokit | Read/write/commit your repos |
-| Streaming | Server-Sent Events | Real-time response in the chat UI |
+| Framework | Next.js 15 (App Router) | Vercel-native, easy deploy, file-based routing |
+| Language | TypeScript | Catches typos, better autocomplete |
+| Styling | Tailwind v4 | Utility classes — no separate CSS files for components |
+| Icons | Lucide React | Clean SVG icons |
+| AI | Anthropic Claude API + tool use | Streams responses, calls GitHub tools |
+| Git ops | Octokit (GitHub REST API) | Read/write/commit your repos |
+| Hosting | Vercel (free Hobby tier) | Frontend + serverless backend, auto-deploys |
 
-## Clone & run locally
-
-Works on Windows, Mac, Linux. Identical on both PCs.
+## Run locally
 
 ```bash
-# 1. Clone
 git clone https://github.com/oksoimcodingnow/atlas-mobile.git
 cd atlas-mobile
-
-# 2. Install deps
 npm install
 
-# 3. Copy the env template and fill in your keys
+# Set up env vars
 cp .env.example .env.local
-# Then edit .env.local in any text editor
+# Edit .env.local with your real keys
 
-# 4. Install Vercel CLI (one-time, global)
-npm install -g vercel
-
-# 5. Run locally — opens at http://localhost:3000
-vercel dev
+npm run dev
+# Opens at http://localhost:3000
 ```
 
-### What goes in `.env.local`
+### Env vars
 
 | Variable | Where to get it |
 |----------|-----------------|
-| `ANTHROPIC_API_KEY` | https://console.anthropic.com/settings/keys (starts with `sk-ant-`) |
-| `GITHUB_TOKEN` | https://github.com/settings/tokens/new → check `repo` scope |
-| `GITHUB_USER` | Your GitHub username (e.g. `oksoimcodingnow`) |
+| `ANTHROPIC_API_KEY` | https://console.anthropic.com/settings/keys |
+| `GITHUB_TOKEN` | https://github.com/settings/tokens/new (check `repo` scope) |
+| `GITHUB_USER` | Your GitHub username |
 
-**Important:** `.env.local` is gitignored — your keys never reach GitHub. Each PC needs its own copy.
+**Local dev only:** these go in `.env.local` (gitignored).
+**Production:** added in the Vercel dashboard, never in code.
 
-## Deploy to Vercel (so you can use it on your phone)
+## Deploy
 
-```bash
-# One-time: link the project to Vercel
-vercel link
+Connected to Vercel — every `git push` to `main` auto-deploys to https://atlas-mobile-theta.vercel.app
 
-# Add env vars (Vercel will prompt — paste your keys)
-vercel env add ANTHROPIC_API_KEY production
-vercel env add GITHUB_TOKEN production
-vercel env add GITHUB_USER production
+## How it works
 
-# Deploy
-vercel --prod
+```
+phone browser
+   ↓ POST /api/chat (Server-Sent Events stream)
+Next.js Route Handler
+   ↓ Anthropic SDK with tools
+Claude API
+   ↓ wants to call a tool
+our code runs the tool via Octokit
+   ↓ reads/writes GitHub
+result → Claude → maybe another tool → eventual end_turn
 ```
 
-Vercel gives you a URL like `https://atlas-mobile.vercel.app`. Open it on your phone, then:
+Each round-trip streams text deltas + tool events back to the browser as SSE messages, so the user sees Claude "thinking" live.
 
-- **iPhone**: Safari → Share → Add to Home Screen
-- **Android**: Chrome → menu → Install app
+The agentic loop is capped at 10 iterations per turn (safety against runaway loops).
 
-Now ATLAS lives on your home screen like a native app.
+## What's next
 
-## Working on 2 PCs
-
-The whole setup is cloneable:
-
-| Each PC needs | What |
-|---------------|------|
-| The repo | `git clone https://github.com/oksoimcodingnow/atlas-mobile.git` |
-| Node.js 18+ | https://nodejs.org |
-| Vercel CLI | `npm install -g vercel` |
-| Its own `.env.local` | Copy `.env.example` → fill in real keys |
-| GitHub credentials configured | For `git push` to work — see atlas-dashboard README |
-
-Production env vars on Vercel are shared across both PCs automatically — you only set them once.
-
-## How the tools work
-
-The serverless function gives Claude three tools. Claude decides when to call which:
-
-| Tool | What it does | GitHub API used |
-|------|--------------|-----------------|
-| `list_repo_files` | List files in a repo path | `GET /repos/{owner}/{repo}/contents/{path}` |
-| `read_repo_file` | Read a file's full content | `GET /repos/.../contents/{path}` |
-| `write_repo_file` | Create/overwrite a file + commit + push | `PUT /repos/.../contents/{path}` |
-
-The agentic loop:
-1. User message → Claude
-2. Claude responds with text and/or tool_use blocks
-3. Server executes the tools (read/write GitHub)
-4. Results fed back to Claude
-5. Repeat until Claude says `end_turn`
-
-Limit: 10 iterations per turn (safety cap against runaway loops).
-
-## Costs
-
-ATLAS Mobile uses pay-per-token APIs:
-
-| Resource | Cost |
-|----------|------|
-| Vercel Hobby tier | **Free** (generous — 100GB bandwidth/month, 100k function invocations) |
-| Anthropic API | Pay per token. Opus 4.7 = $5/$25 per 1M, Sonnet 4.6 = $3/$15, Haiku 4.5 = $1/$5 |
-| GitHub API | Free for your own repos |
-
-Use Sonnet 4.6 for daily chat to keep costs low. Switch to Opus 4.7 in the slicer when you need real horsepower.
-
-## Roadmap
-
-- [ ] Add OpenAI GPT-5 / GPT-4o to the slicer (multi-provider)
-- [ ] Voice input (Web Speech API)
-- [ ] Voice output (TTS reading Claude's responses)
-- [ ] Persistent chat history (Firestore or KV)
-- [ ] Pull request creation (instead of direct commits)
+- [ ] Voice input + TTS output
+- [ ] Google Calendar OAuth + push notifications for work/study schedule
+- [ ] OpenAI / Gemini models in the slicer (multi-provider)
+- [ ] Persistent chat history (Vercel KV or Firestore)
+- [ ] Pull-request creation flow (instead of direct commits)
 - [ ] Code diff preview before commit
-- [ ] Multiple repo support (saved repo list)
 
 ## License
 
-MIT — do whatever you want.
-
----
-
-Built by [@oksoimcodingnow](https://github.com/oksoimcodingnow) — Y3 Financial Engineering, building tools to make coding feel intentional.
+MIT

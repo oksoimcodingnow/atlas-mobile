@@ -1,8 +1,9 @@
 {
   "name": "ATLAS",
   "short_name": "ATLAS",
-  "description": "Your AI coding agent",
+  "description": "Your personal AI coding agent",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#04070d",
   "theme_color": "#04070d",
