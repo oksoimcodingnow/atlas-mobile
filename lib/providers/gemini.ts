@@ -80,9 +80,13 @@ export async function runGemini(opts: RunOptions): Promise<void> {
 
   const ai = new GoogleGenAI({ apiKey });
   const tools = geminiTools();
+  const now = new Date();
   const systemInstruction =
     SYSTEM_PROMPT +
     `\n\nDefault GitHub user: ${defaultUser}` +
+    `\nCurrent date and time: ${now.toString()} (ISO: ${now.toISOString()}).` +
+    ` Use this when computing relative times like "in 5 minutes" or "tomorrow at 7pm".` +
+    ` The current YEAR is ${now.getFullYear()} — do not invent a different one.` +
     (repo ? `\nUser's current repo context: ${repo}` : "");
 
   const contents: GeminiContent[] = toGeminiHistory(messages);

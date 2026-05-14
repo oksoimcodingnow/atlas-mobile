@@ -43,14 +43,24 @@ export async function runAnthropic(opts: RunOptions): Promise<void> {
   const anthropic = new Anthropic({ apiKey });
   const tools = toAnthropicTools();
 
+  // Two system blocks: the first is stable (prompt + default user) and cached;
+  // the second carries volatile context (current date, repo) and is NOT cached.
+  // Splitting them keeps the prompt cache warm across requests even though
+  // the date changes every call.
+  const now = new Date();
   const systemBlocks: Anthropic.TextBlockParam[] = [
     {
       type: "text",
-      text:
-        SYSTEM_PROMPT +
-        `\n\nDefault GitHub user: ${defaultUser}` +
-        (repo ? `\nUser's current repo context: ${repo}` : ""),
+      text: SYSTEM_PROMPT + `\n\nDefault GitHub user: ${defaultUser}`,
       cache_control: { type: "ephemeral" },
+    },
+    {
+      type: "text",
+      text:
+        `Current date and time: ${now.toString()} (ISO: ${now.toISOString()}).` +
+        ` Use this when computing relative times like "in 5 minutes" or "tomorrow at 7pm".` +
+        ` The current YEAR is ${now.getFullYear()} — do not invent a different one.` +
+        (repo ? `\nUser's current repo context: ${repo}` : ""),
     },
   ];
 
