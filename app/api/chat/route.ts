@@ -17,6 +17,7 @@
 import { Octokit } from "@octokit/rest";
 import { runAnthropic } from "@/lib/providers/anthropic";
 import { runGemini } from "@/lib/providers/gemini";
+import { runGroq } from "@/lib/providers/groq";
 import { sseChunk } from "@/lib/tools";
 
 export const runtime = "nodejs";
@@ -40,12 +41,18 @@ export async function POST(request: Request) {
   const defaultUser = process.env.GITHUB_USER || "";
 
   // Decide which provider to use based on the model name.
-  const isGemini = model.toLowerCase().startsWith("gemini");
+  const lowered = model.toLowerCase();
+  const isGemini = lowered.startsWith("gemini");
+  const isGroq = lowered.startsWith("llama") || lowered.startsWith("mixtral") || lowered.startsWith("qwen");
+  const isAnthropic = !isGemini && !isGroq;
 
   if (isGemini && !process.env.GEMINI_API_KEY) {
     return new Response("Server missing GEMINI_API_KEY", { status: 500 });
   }
-  if (!isGemini && !process.env.ANTHROPIC_API_KEY) {
+  if (isGroq && !process.env.GROQ_API_KEY) {
+    return new Response("Server missing GROQ_API_KEY", { status: 500 });
+  }
+  if (isAnthropic && !process.env.ANTHROPIC_API_KEY) {
     return new Response("Server missing ANTHROPIC_API_KEY", { status: 500 });
   }
 
@@ -57,6 +64,16 @@ export async function POST(request: Request) {
         if (isGemini) {
           await runGemini({
             apiKey: process.env.GEMINI_API_KEY!,
+            model,
+            repo,
+            messages,
+            octokit,
+            defaultUser,
+            write,
+          });
+        } else if (isGroq) {
+          await runGroq({
+            apiKey: process.env.GROQ_API_KEY!,
             model,
             repo,
             messages,

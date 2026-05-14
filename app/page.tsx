@@ -71,9 +71,10 @@ type ChatItem =
   | { type: "error"; text: string };
 
 // The models that appear in the slicer at the bottom of the screen.
-// "Gemini" is free up to 1500 requests/day; the Claude models are pay-per-token.
+// GEMINI + LLAMA are free; Claude models are pay-per-token.
 const MODELS = [
   { id: "gemini-2.5-flash", label: "GEMINI", cost: "FREE" },
+  { id: "llama-3.3-70b-versatile", label: "LLAMA", cost: "FREE FAST" },
   { id: "claude-haiku-4-5", label: "HAIKU", cost: "$1/$5" },
   { id: "claude-sonnet-4-6", label: "SONNET", cost: "$3/$15" },
   { id: "claude-opus-4-7", label: "OPUS", cost: "$5/$25" },
