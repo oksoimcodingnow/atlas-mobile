@@ -71,8 +71,9 @@ type ChatItem =
   | { type: "error"; text: string };
 
 // The models that appear in the slicer at the bottom of the screen.
-// GEMINI + LLAMA are free; Claude models are pay-per-token.
+// OLLAMA is local; GEMINI + LLAMA are free; Claude models are pay-per-token.
 const MODELS = [
+  { id: "ollama", label: "OLLAMA", cost: "LOCAL" },
   { id: "gemini-2.5-flash", label: "GEMINI", cost: "FREE" },
   { id: "llama-3.3-70b-versatile", label: "LLAMA", cost: "FREE FAST" },
   { id: "claude-haiku-4-5", label: "HAIKU", cost: "$1/$5" },
@@ -155,6 +156,19 @@ export default function ChatPage() {
         }
         const existing = await reg.pushManager.getSubscription();
         if (!cancelled) setPushState(existing ? "subscribed" : "default");
+        // If we already have a subscription, re-save it to the server.
+        // This catches cases where the original save failed (e.g. KV not connected yet).
+        if (existing) {
+          try {
+            await fetch("/api/push/save-subscription", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ subscription: existing.toJSON() }),
+            });
+          } catch {
+            /* non-fatal */
+          }
+        }
       } catch {
         if (!cancelled) setPushState("unsupported");
       }
@@ -245,6 +259,16 @@ export default function ChatPage() {
       if (!sub) {
         setPushState("default");
         throw new Error("Not subscribed");
+      }
+      // Also re-save the subscription server-side so scheduled pushes can reach this device.
+      try {
+        await fetch("/api/push/save-subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: sub.toJSON() }),
+        });
+      } catch {
+        /* non-fatal */
       }
       const res = await fetch("/api/push/test", {
         method: "POST",

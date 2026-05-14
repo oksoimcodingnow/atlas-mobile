@@ -2,6 +2,15 @@
 
 > Briefing for AI coding agents working on this repo. Read this first to avoid asking the obvious.
 
+## Latest Codex handoff
+
+- Branch intent: Codex Ollama/local testing work belongs on `codex/ollama-local-test`; Claude experiments should use separate `claude/...` branches and merge by PR/review.
+- Added local Ollama chat mode so ATLAS can be tested without Anthropic/Gemini/Groq credits.
+- `model: "ollama"` now routes to `lib/providers/ollama.ts`, talks to `OLLAMA_BASE_URL`, and does not require `GITHUB_TOKEN`.
+- Mistake fixed: `/api/chat` previously checked `GITHUB_TOKEN` before provider routing, which blocked no-credit local chat testing. The token check now only runs for cloud providers with GitHub tools.
+- Important limitation: Ollama mode is chat-only right now. GitHub read/write tools are intentionally disabled in local mode.
+- Still needs security work before public use: `/api/chat` cloud-provider path can still use the server GitHub token with write tools; add auth, repo allowlist, and PR-only writes before trusting the live app.
+
 ## What this is
 
 **ATLAS Mobile** — a Progressive Web App that lives in the user's phone home screen. Chat UI on the front, AI coding agent on the back. The agent reads, edits, and commits code to the user's GitHub repos via tool use.
@@ -22,6 +31,8 @@
 - **Next.js 16** App Router, TypeScript, **Tailwind v4** (CSS-based config, no `tailwind.config.js`)
 - **Anthropic SDK** (`@anthropic-ai/sdk`) for Claude
 - **Google GenAI SDK** (`@google/genai`) for Gemini Flash (free tier)
+- **Groq SDK** (`groq-sdk`) for hosted Llama
+- **Ollama** for local no-credit chat testing
 - **Octokit** (`@octokit/rest`) for GitHub REST API
 - **Lucide React** icons
 - **Vercel** for hosting (free Hobby tier; auto-deploys on push to main)
@@ -51,7 +62,10 @@ Both providers stream the SAME SSE event shape so the frontend (`app/page.tsx`) 
 
 | Variable | Required when | Where to get |
 |----------|---------------|--------------|
+| `OLLAMA_BASE_URL` | local `ollama` model | default `http://127.0.0.1:11434` |
+| `OLLAMA_MODEL` | local `ollama` model | default `llama3.2:3b` |
 | `GEMINI_API_KEY` | using `gemini-*` models | https://aistudio.google.com/apikey (free) |
+| `GROQ_API_KEY` | using `llama-*` hosted models | https://console.groq.com/keys |
 | `ANTHROPIC_API_KEY` | using `claude-*` models | https://console.anthropic.com (paid) |
 | `GITHUB_TOKEN` | always | https://github.com/settings/tokens/new — `repo` scope |
 | `GITHUB_USER` | always | username (e.g. `oksoimcodingnow`) |

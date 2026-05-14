@@ -24,6 +24,7 @@ I'm new to React. This codebase has rich comments throughout explaining concepts
 | Styling | Tailwind v4 | Utility classes — no separate CSS files for components |
 | Icons | Lucide React | Clean SVG icons |
 | AI | Anthropic Claude API + tool use | Streams responses, calls GitHub tools |
+| Local AI | Ollama | Test chat locally without paid API keys |
 | Git ops | Octokit (GitHub REST API) | Read/write/commit your repos |
 | Hosting | Vercel (free Hobby tier) | Frontend + serverless backend, auto-deploys |
 
@@ -41,6 +42,22 @@ cp .env.example .env.local
 npm run dev
 # Opens at http://localhost:3000
 ```
+
+### Local no-credit testing with Ollama
+
+ATLAS has an `OLLAMA` slicer option for local chat testing. It does not use
+Anthropic, Gemini, Groq, or GitHub tool calls.
+
+```bash
+# Install Ollama first from https://ollama.com/download
+ollama pull llama3.2:3b
+ollama serve
+
+npm run dev
+# Open http://localhost:3000 and choose OLLAMA in the model slicer
+```
+
+For a different local model, set `OLLAMA_MODEL` in `.env.local`.
 
 ### Env vars
 

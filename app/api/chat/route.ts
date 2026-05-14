@@ -5,19 +5,22 @@
  * Picks the right AI provider based on the requested model:
  *   - Claude models  -> Anthropic SDK
  *   - Gemini models  -> Google GenAI SDK
+ *   - Ollama models  -> local Ollama daemon
  *
- * Both providers share the same tool implementation (lib/tools.ts) and
+ * Cloud providers share the same tool implementation (lib/tools.ts) and
  * stream events back in the same SSE format, so the frontend doesn't
  * care which one answered.
  *
- * Both run an AGENTIC LOOP: the AI may want to call a tool, we run it,
- * feed the result back, repeat until the AI is done.
+ * Cloud providers run an AGENTIC LOOP: the AI may want to call a tool, we run
+ * it, feed the result back, repeat until the AI is done. Ollama local mode is
+ * chat-only so it can be tested without paid API keys or GitHub writes.
  */
 
 import { Octokit } from "@octokit/rest";
 import { runAnthropic } from "@/lib/providers/anthropic";
 import { runGemini } from "@/lib/providers/gemini";
 import { runGroq } from "@/lib/providers/groq";
+import { runOllama } from "@/lib/providers/ollama";
 import { sseChunk } from "@/lib/tools";
 
 export const runtime = "nodejs";
@@ -30,21 +33,24 @@ interface ChatRequest {
 }
 
 export async function POST(request: Request) {
-  if (!process.env.GITHUB_TOKEN) {
-    return new Response("Server missing GITHUB_TOKEN", { status: 500 });
-  }
-
   const body = (await request.json()) as ChatRequest;
-  const { messages = [], model = "claude-opus-4-7", repo } = body;
-
-  const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-  const defaultUser = process.env.GITHUB_USER || "";
+  const { messages = [], model = "gemini-2.5-flash", repo } = body;
 
   // Decide which provider to use based on the model name.
   const lowered = model.toLowerCase();
+  const isOllama = lowered === "ollama" || lowered.startsWith("ollama/");
   const isGemini = lowered.startsWith("gemini");
   const isGroq = lowered.startsWith("llama") || lowered.startsWith("mixtral") || lowered.startsWith("qwen");
-  const isAnthropic = !isGemini && !isGroq;
+  const isAnthropic = !isOllama && !isGemini && !isGroq;
+  const defaultUser = process.env.GITHUB_USER || "";
+
+  let octokit: Octokit | null = null;
+  if (!isOllama) {
+    if (!process.env.GITHUB_TOKEN) {
+      return new Response("Server missing GITHUB_TOKEN", { status: 500 });
+    }
+    octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+  }
 
   if (isGemini && !process.env.GEMINI_API_KEY) {
     return new Response("Server missing GEMINI_API_KEY", { status: 500 });
@@ -61,13 +67,21 @@ export async function POST(request: Request) {
       const write = (chunk: Uint8Array) => controller.enqueue(chunk);
 
       try {
-        if (isGemini) {
+        if (isOllama) {
+          await runOllama({
+            model,
+            repo,
+            messages,
+            defaultUser,
+            write,
+          });
+        } else if (isGemini) {
           await runGemini({
             apiKey: process.env.GEMINI_API_KEY!,
             model,
             repo,
             messages,
-            octokit,
+            octokit: octokit!,
             defaultUser,
             write,
           });
@@ -77,7 +91,7 @@ export async function POST(request: Request) {
             model,
             repo,
             messages,
-            octokit,
+            octokit: octokit!,
             defaultUser,
             write,
           });
@@ -87,7 +101,7 @@ export async function POST(request: Request) {
             model,
             repo,
             messages,
-            octokit,
+            octokit: octokit!,
             defaultUser,
             write,
           });
