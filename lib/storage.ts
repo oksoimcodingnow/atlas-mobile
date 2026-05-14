@@ -82,6 +82,28 @@ export async function removeReminder(id: string): Promise<void> {
   await kv.del(REMINDER_HASH_PREFIX + id);
 }
 
+// Returns ALL pending reminders sorted by fire time ascending.
+// Used by /api/reminders and the list_reminders AI tool.
+export async function listAllReminders(): Promise<Reminder[]> {
+  const kv = getRedis();
+  if (!kv) return [];
+  // 0 to +Infinity score range = every reminder regardless of fire time
+  const ids = (await kv.zrange(REMINDER_ZSET, 0, Number.MAX_SAFE_INTEGER, { byScore: true })) as string[];
+  if (!ids.length) return [];
+  const raws = await Promise.all(ids.map((id) => kv.get(REMINDER_HASH_PREFIX + id)));
+  const reminders: Reminder[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const raw = raws[i];
+    if (!raw) continue;
+    try {
+      reminders.push(typeof raw === "string" ? JSON.parse(raw) : (raw as Reminder));
+    } catch {
+      /* skip malformed */
+    }
+  }
+  return reminders;
+}
+
 // ============================================================================
 // PUSH SUBSCRIPTION STORAGE
 // ============================================================================

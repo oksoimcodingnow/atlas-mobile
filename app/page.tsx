@@ -31,7 +31,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Trash2, Wrench, CheckCircle2, XCircle, Bell, BellOff } from "lucide-react";
+import { Send, Trash2, Wrench, CheckCircle2, XCircle, Bell, BellOff, Clock, X } from "lucide-react";
 
 // ============================================================================
 // PUSH NOTIFICATION HELPERS
@@ -101,6 +101,18 @@ export default function ChatPage() {
   // below will detect the real state once mounted.
   const [pushState, setPushState] = useState<PushState>("default");
   const [pushBusy, setPushBusy] = useState(false);
+
+  // Reminder panel state
+  const [showReminders, setShowReminders] = useState(false);
+  const [reminders, setReminders] = useState<Array<{
+    id: string;
+    fire_at: string;
+    fire_at_ms: number;
+    message: string;
+    seconds_from_now: number;
+  }>>([]);
+  const [remindersLoading, setRemindersLoading] = useState(false);
+  const [remindersError, setRemindersError] = useState<string | null>(null);
 
   // --- REFS ---
   // useRef gives us a stable reference to a DOM element. Used here to
@@ -396,6 +408,42 @@ export default function ChatPage() {
     setHistory([]);
   }
 
+  // --- REMINDERS PANEL ---
+  // Fetch the list of pending reminders from the server. Used when the user
+  // opens the REMINDERS panel from the header.
+  const loadReminders = useCallback(async () => {
+    setRemindersLoading(true);
+    setRemindersError(null);
+    try {
+      const res = await fetch("/api/reminders");
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to load reminders");
+      setReminders(data.reminders);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setRemindersError(msg);
+    } finally {
+      setRemindersLoading(false);
+    }
+  }, []);
+
+  const openReminders = useCallback(() => {
+    setShowReminders(true);
+    loadReminders();
+  }, [loadReminders]);
+
+  const cancelReminder = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/reminders?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Cancel failed");
+      setReminders((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setRemindersError(msg);
+    }
+  }, []);
+
   // Time-aware greeting for the empty state.
   const greeting = (() => {
     const h = new Date().getHours();
@@ -449,6 +497,14 @@ export default function ChatPage() {
               BLOCKED
             </span>
           ) : null}
+          <button
+            onClick={openReminders}
+            className="flex items-center gap-1 px-2 py-1 border border-cyan/30 hover:border-cyan hover:text-cyan transition"
+            aria-label="View pending reminders"
+          >
+            <Clock size={11} />
+            REMINDERS
+          </button>
           {items.length > 0 && (
             <button
               onClick={clear}
@@ -461,6 +517,87 @@ export default function ChatPage() {
           )}
         </div>
       </header>
+
+      {/* REMINDERS modal */}
+      {showReminders && (
+        <div
+          className="fixed inset-0 z-50 bg-bg/80 backdrop-blur flex items-center justify-center px-4"
+          onClick={() => setShowReminders(false)}
+        >
+          <div
+            className="relative w-full max-w-md max-h-[80vh] overflow-y-auto bg-bg-2 border border-cyan/40 [box-shadow:0_0_30px_rgba(0,229,255,0.2)] p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-3 pb-2 border-b border-cyan/20">
+              <h2 className="text-sm tracking-[0.3em] text-cyan flex items-center gap-2">
+                <Clock size={14} /> REMINDERS
+              </h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={loadReminders}
+                  disabled={remindersLoading}
+                  className="text-[0.65rem] tracking-widest text-cyan-dim hover:text-cyan border border-cyan/30 px-2 py-1 disabled:opacity-40"
+                >
+                  REFRESH
+                </button>
+                <button
+                  onClick={() => setShowReminders(false)}
+                  className="text-cyan-dim hover:text-cyan"
+                  aria-label="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {remindersLoading ? (
+              <div className="text-cyan-dim text-sm py-4 text-center">Loading...</div>
+            ) : remindersError ? (
+              <div className="text-err text-xs py-4 text-center">⚠ {remindersError}</div>
+            ) : reminders.length === 0 ? (
+              <div className="text-cyan-dim text-sm py-6 text-center italic">
+                No pending reminders.
+                <div className="text-xs mt-2 opacity-70">
+                  Tell ATLAS &quot;remind me in 5 minutes to X&quot; to schedule one.
+                </div>
+              </div>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {reminders.map((r) => {
+                  const secs = r.seconds_from_now;
+                  const human = secs < 0
+                    ? "due now"
+                    : secs < 120 ? `in ${secs}s`
+                    : secs < 7200 ? `in ${Math.round(secs / 60)} min`
+                    : secs < 172800 ? `in ${Math.round(secs / 3600)} hr`
+                    : `in ${Math.round(secs / 86400)} days`;
+                  const localTime = new Date(r.fire_at_ms).toLocaleString();
+                  return (
+                    <li
+                      key={r.id}
+                      className="border border-cyan/25 p-3 bg-bg-2/50 flex justify-between items-start gap-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-text">{r.message}</div>
+                        <div className="text-[0.7rem] text-cyan mt-1">{human}</div>
+                        <div className="text-[0.65rem] text-cyan-dim mt-0.5">{localTime}</div>
+                      </div>
+                      <button
+                        onClick={() => cancelReminder(r.id)}
+                        className="text-cyan-dim hover:text-err border border-cyan/20 hover:border-err/50 p-1 shrink-0"
+                        aria-label="Cancel reminder"
+                        title="Cancel"
+                      >
+                        <X size={12} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* CHAT AREA */}
       <main

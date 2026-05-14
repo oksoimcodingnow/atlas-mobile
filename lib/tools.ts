@@ -10,7 +10,7 @@
  *   - `summary`: a one-line human-readable description for the UI
  */
 import { Octokit } from "@octokit/rest";
-import { addReminder } from "./storage";
+import { addReminder, listAllReminders, removeReminder } from "./storage";
 
 export interface ToolInput {
   repo?: string;
@@ -23,6 +23,8 @@ export interface ToolInput {
   fire_at?: string;       // ISO 8601 datetime (absolute)
   delay_seconds?: number; // OR seconds from now (relative — prefer this for "in 5 minutes")
   message?: string;
+  // cancel_reminder
+  reminder_id?: string;
 }
 
 export interface ToolContext {
@@ -98,6 +100,31 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
+    name: "list_reminders",
+    description:
+      "List all the user's pending reminders. Use this when the user asks 'what reminders do I have?', 'show me my reminders', or 'when will I get reminded?'. Returns id, fire_at, and message for each.",
+    parameters: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "cancel_reminder",
+    description:
+      "Cancel a previously scheduled reminder by its ID. Use this when the user says 'cancel my reminder', 'don't remind me about X', etc. If you don't know the ID, call list_reminders first to find it.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        reminder_id: {
+          type: "string" as const,
+          description: "The reminder ID returned from schedule_reminder or list_reminders (looks like 'rem_abc123').",
+        },
+      },
+      required: ["reminder_id"],
+    },
+  },
+  {
     name: "schedule_reminder",
     description:
       "Schedule a future push notification on the user's phone. PREFER `delay_seconds` for relative times like 'in 5 minutes' or 'in 2 hours' — the server computes the exact time, so you don't have to do timezone math (which LLMs are bad at). Only use `fire_at` for absolute clock times like '7pm tomorrow' or 'midnight on Friday'.",
@@ -142,6 +169,46 @@ export async function runTool(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   const { octokit, defaultUser } = ctx;
+
+  // list_reminders — show all pending reminders sorted by fire time.
+  if (toolName === "list_reminders") {
+    const all = await listAllReminders();
+    const upcoming = all
+      .filter((r) => r.fireAt > Date.now() - 60_000) // skip already-due (cron will pick up)
+      .sort((a, b) => a.fireAt - b.fireAt);
+    if (upcoming.length === 0) {
+      return { content: "[]", summary: "no pending reminders" };
+    }
+    const formatted = upcoming.map((r) => {
+      const secsAway = Math.round((r.fireAt - Date.now()) / 1000);
+      const human =
+        secsAway < 120 ? `in ${secsAway}s` :
+        secsAway < 7200 ? `in ${Math.round(secsAway / 60)}min` :
+        new Date(r.fireAt).toISOString();
+      return {
+        id: r.id,
+        fire_at: new Date(r.fireAt).toISOString(),
+        fire_at_local: new Date(r.fireAt).toString(),
+        in: human,
+        message: r.message,
+      };
+    });
+    return {
+      content: JSON.stringify(formatted, null, 2),
+      summary: `${upcoming.length} pending reminder${upcoming.length === 1 ? "" : "s"}`,
+    };
+  }
+
+  // cancel_reminder — remove by ID.
+  if (toolName === "cancel_reminder") {
+    const id = input.reminder_id;
+    if (!id) throw new Error("cancel_reminder: missing reminder_id");
+    await removeReminder(id);
+    return {
+      content: JSON.stringify({ canceled: id }),
+      summary: `canceled reminder ${id}`,
+    };
+  }
 
   // schedule_reminder doesn't need a repo target.
   if (toolName === "schedule_reminder") {
