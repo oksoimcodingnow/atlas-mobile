@@ -20,7 +20,8 @@ export interface ToolInput {
   content?: string;
   commit_message?: string;
   // schedule_reminder
-  fire_at?: string;    // ISO 8601 datetime
+  fire_at?: string;       // ISO 8601 datetime (absolute)
+  delay_seconds?: number; // OR seconds from now (relative — prefer this for "in 5 minutes")
   message?: string;
 }
 
@@ -99,21 +100,26 @@ export const TOOL_SCHEMAS = [
   {
     name: "schedule_reminder",
     description:
-      "Schedule a future push notification on the user's phone. Use this when the user says things like 'remind me at 7pm to study' or 'tell me in 2 hours to take a break'. The reminder fires as a push notification on the user's installed PWA.",
+      "Schedule a future push notification on the user's phone. PREFER `delay_seconds` for relative times like 'in 5 minutes' or 'in 2 hours' — the server computes the exact time, so you don't have to do timezone math (which LLMs are bad at). Only use `fire_at` for absolute clock times like '7pm tomorrow' or 'midnight on Friday'.",
     parameters: {
       type: "object" as const,
       properties: {
+        delay_seconds: {
+          type: "string" as const,
+          description:
+            "Seconds from NOW until the reminder fires. Use this for any 'in X minutes/hours/seconds' phrasing. Example: '15' for '15 seconds', '300' for '5 minutes', '7200' for '2 hours'. Pass as a string of digits.",
+        },
         fire_at: {
           type: "string" as const,
           description:
-            "ISO 8601 datetime when the reminder should fire. Use the user's local timezone if known, otherwise UTC. Example: '2026-05-13T19:00:00+07:00'.",
+            "ISO 8601 datetime for absolute times like '7pm tomorrow'. Include timezone offset. Example: '2026-05-14T19:00:00+07:00'. Use delay_seconds instead if possible.",
         },
         message: {
           type: "string" as const,
           description: "Short notification body (under 100 chars). Becomes the push body.",
         },
       },
-      required: ["fire_at", "message"],
+      required: ["message"],
     },
   },
 ];
@@ -139,24 +145,44 @@ export async function runTool(
 
   // schedule_reminder doesn't need a repo target.
   if (toolName === "schedule_reminder") {
-    const when = input.fire_at ? Date.parse(input.fire_at) : NaN;
-    if (!when || isNaN(when)) {
-      throw new Error("schedule_reminder: invalid fire_at ISO datetime");
+    // Prefer delay_seconds (relative) — most reliable since the AI doesn't
+    // have to do timezone arithmetic. Fall back to fire_at (absolute).
+    let when: number;
+    if (input.delay_seconds !== undefined && input.delay_seconds !== null) {
+      const secs = typeof input.delay_seconds === "string"
+        ? parseInt(input.delay_seconds, 10)
+        : Number(input.delay_seconds);
+      if (!Number.isFinite(secs) || secs <= 0) {
+        throw new Error("schedule_reminder: invalid delay_seconds (must be a positive integer)");
+      }
+      if (secs > 60 * 60 * 24 * 365) {
+        throw new Error("schedule_reminder: delay_seconds > 1 year");
+      }
+      when = Date.now() + secs * 1000;
+    } else if (input.fire_at) {
+      when = Date.parse(input.fire_at);
+      if (!when || isNaN(when)) {
+        throw new Error("schedule_reminder: invalid fire_at ISO datetime");
+      }
+      if (when < Date.now() - 60_000) {
+        throw new Error("schedule_reminder: fire_at is in the past");
+      }
+    } else {
+      throw new Error("schedule_reminder: must provide either delay_seconds or fire_at");
     }
-    if (when < Date.now() - 60_000) {
-      throw new Error("schedule_reminder: fire_at is in the past");
-    }
+
     const message = (input.message || "Reminder").slice(0, 200);
     const id = "rem_" + Math.random().toString(36).slice(2, 12);
-    await addReminder({
-      id,
-      fireAt: when,
-      message,
-      createdAt: Date.now(),
-    });
+    await addReminder({ id, fireAt: when, message, createdAt: Date.now() });
+    const secondsFromNow = Math.round((when - Date.now()) / 1000);
+    const humanWhen = secondsFromNow < 120
+      ? `in ${secondsFromNow}s`
+      : secondsFromNow < 3600
+      ? `in ${Math.round(secondsFromNow / 60)}min`
+      : new Date(when).toISOString();
     return {
-      content: JSON.stringify({ id, fireAt: when, message }),
-      summary: `scheduled "${message.slice(0, 40)}" for ${new Date(when).toLocaleString()}`,
+      content: JSON.stringify({ id, fireAt: when, message, secondsFromNow }),
+      summary: `scheduled "${message.slice(0, 40)}" ${humanWhen}`,
     };
   }
 
