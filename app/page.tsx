@@ -155,6 +155,19 @@ export default function ChatPage() {
         }
         const existing = await reg.pushManager.getSubscription();
         if (!cancelled) setPushState(existing ? "subscribed" : "default");
+        // If we already have a subscription, re-save it to the server.
+        // This catches cases where the original save failed (e.g. KV not connected yet).
+        if (existing) {
+          try {
+            await fetch("/api/push/save-subscription", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ subscription: existing.toJSON() }),
+            });
+          } catch {
+            /* non-fatal */
+          }
+        }
       } catch {
         if (!cancelled) setPushState("unsupported");
       }
@@ -245,6 +258,16 @@ export default function ChatPage() {
       if (!sub) {
         setPushState("default");
         throw new Error("Not subscribed");
+      }
+      // Re-save the subscription server-side so scheduled pushes can reach this device.
+      try {
+        await fetch("/api/push/save-subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: sub.toJSON() }),
+        });
+      } catch {
+        /* non-fatal */
       }
       const res = await fetch("/api/push/test", {
         method: "POST",
